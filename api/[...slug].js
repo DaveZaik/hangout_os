@@ -29,10 +29,10 @@ const hash = (p, s) => c.scryptSync(p, s, 32).toString('hex');
 const mac = b => c.createHmac('sha256', S).update(b).digest('base64url');
 const sign = u => { const b = Buffer.from(JSON.stringify({ id: u._id, a: !!u.admin, e: Date.now() + 2592e6 })).toString('base64url'); return b + '.' + mac(b); };
 const check = t => { try { const [b, s] = t.split('.'); if (s !== mac(b)) return null; const p = JSON.parse(Buffer.from(b, 'base64url')); return p.e > Date.now() ? p : null; } catch { return null; } };
-const pub = u => ({ id: u._id, name: u.name, avatar: u.avatar, wallpaper: u.wallpaper, accent: u.accent, admin: !!u.admin, jingle: u.jingle, ambient: u.ambient, volume: u.volume, clicks: u.clicks });
+const pub = u => ({ id: u._id, name: u.name, avatar: u.avatar, wallpaper: u.wallpaper, accent: u.accent, admin: !!u.admin, ambient: u.ambient, volume: u.volume, clicks: u.clicks });
 const WP = ['peach', 'dusk', 'lilac', 'moss', 'ember', 'night'], ACC = ['#e07a5f', '#6a8caf', '#8e7dbe', '#5f9e6e', '#d4a017', '#c95d8a'];
 const pick = a => a[Math.random() * a.length | 0];
-const mk = (U, name, pw, admin, avatar, extra = {}) => { const _id = id(); return U.insertOne({ _id, name, hash: hash(pw, _id), admin: !!admin, avatar: avatar || '🙂', wallpaper: pick(WP), accent: pick(ACC), jingle: 'none', ambient: 0, volume: 50, clicks: 0, ...extra }); };
+const mk = (U, name, pw, admin, avatar, extra = {}) => { const _id = id(); return U.insertOne({ _id, name, hash: hash(pw, _id), admin: !!admin, avatar: avatar || '🙂', wallpaper: pick(WP), accent: pick(ACC), ambient: 0, volume: 50, clicks: 0, ...extra }); };
 const clean = b => ({
   title: String(b.title || 'Untitled').slice(0, 80), date: String(b.date || '').slice(0, 10), place: String(b.place || '').slice(0, 80),
   who: String(b.who || '').slice(0, 120), emoji: String(b.emoji || '🖼️').slice(0, 8), story: String(b.story || '').slice(0, 3000),
@@ -86,7 +86,7 @@ module.exports = async (q, r) => {
       return ok({ me: pub(mine), users: u.map(pub), hangouts: h, notes: n, comments: cm });
     }
     if (k === 'PUT me') {
-      const s = {}; for (const f of ['wallpaper', 'accent', 'avatar', 'jingle']) if (typeof b[f] === 'string') s[f] = b[f].slice(0, b[f].startsWith('data:') ? 400000 : 500);
+      const s = {}; for (const f of ['wallpaper', 'accent', 'avatar']) if (typeof b[f] === 'string') s[f] = b[f].slice(0, b[f].startsWith('data:') ? 400000 : 2000);
       if (typeof b.name === 'string' && b.name.trim()) s.name = b.name.trim().slice(0, 30);
       if (typeof b.password === 'string' && b.password.length >= 3) s.hash = hash(b.password, me.id);
       if (typeof b.ambient === 'number') s.ambient = b.ambient ? 1 : 0;
@@ -106,11 +106,14 @@ module.exports = async (q, r) => {
       await C.insertOne({ _id: id(), hangout: b.hangout, user: me.id, text: String(b.text).slice(0, 500), at: Date.now() }); return ok({});
     }
     if (k === 'DELETE comments') { const cm = await C.findOne({ _id: i }); if (cm && (me.a || cm.user === me.id)) await C.deleteOne({ _id: i }); return ok({}); }
-    // chat: a member has one thread with the admin (thread id = member id); the admin can open any thread
-    if (k === 'GET messages') return ok(await M.find({ thread: i === 'all' ? 'all' : me.a ? i : me.id }).sort({ at: 1 }).limit(300).toArray());
+    const isDm = i.startsWith('dm:'), participants = isDm ? i.slice(3).split(':') : [];
+    if (isDm && (participants.length !== 2 || participants[0] >= participants[1] || !participants.includes(me.id) || await U.countDocuments({ _id: { $in: participants } }) !== 2)) return no('not a participant', 403);
+    // Group chat is shared; admin support keeps its member-id thread; DMs require both participants.
+    const thread = i === 'all' ? 'all' : isDm ? i : me.a ? i : me.id;
+    if (k === 'GET messages') return ok(await M.find({ thread }).sort({ at: 1 }).limit(300).toArray());
     if (k === 'POST messages') {
       if (!b.text) return no('empty');
-      await M.insertOne({ _id: id(), thread: i === 'all' ? 'all' : me.a ? i : me.id, from: me.id, text: String(b.text).slice(0, 1000), at: Date.now() }); return ok({});
+      await M.insertOne({ _id: id(), thread, from: me.id, text: String(b.text).slice(0, 1000), at: Date.now() }); return ok({});
     }
     if (!me.a) return no('admin only', 403);
 

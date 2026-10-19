@@ -2,7 +2,7 @@
 (function (f) { const r = f(); typeof module !== 'undefined' ? module.exports = r : window.SEED = r; })(() => {
   const W = ['peach', 'dusk', 'lilac', 'moss', 'ember', 'night'], A = ['#e07a5f', '#6a8caf', '#8e7dbe', '#5f9e6e', '#d4a017', '#c95d8a'];
   // [display name, image slug (img/users/<slug>.png), admin?]   — password defaults to the lowercase display name
-  const roster = [['David', 'david', 1], ['Shelly', 'shelly'], ['Nelly', 'nelly'], ['Beckham', 'beckham'], ['Ted', 'ted'], ['Claire', 'claire'], ['Violet', 'violet'], ['Nelly', 'nelly2'], ['Sharon', 'sharon'], ['Michael', 'michael'], ['Mercy', 'mercy'], ['Njeri', 'njeri']];
+  const roster = [['David', 'david', 1], ['Shelly', 'shelly'], ['Nelly', 'nelly'], ['Beckham', 'beckham'], ['Ted', 'ted'], ['Claire', 'claire'], ['Violet', 'violet'], ['Sharon', 'sharon'], ['Michael', 'michael'], ['Mercy', 'mercy'], ['Njeri', 'njeri']];
   return {
     users: roster.map(([name, slug, admin], i) => ({ name, slug, admin: admin ? 1 : 0, avatar: `img/users/${slug}.png`, wallpaper: W[i % 6], accent: A[i % 6] })),
     hangouts: [
