@@ -2,7 +2,7 @@
 
 | Folder / file | What it is |
 |---|---|
-| `img/users/<slug>.png` | Profile photo for the login bubbles. Slugs: david, shelly, nelly, beckham, ted, claire, violet, nelly2, sharon, michael, mercy. Square, 256x256+. Missing file = shows their initial. |
+| `img/users/<slug>.png` | Profile photo for the login bubbles. Slugs: david, shelly, nelly, beckham, ted, claire, violet, sharon, michael, mercy, njeri. Square, 256x256+. Missing file = shows their initial. |
 | `img/wallpapers/*.jpg` | Extra desktop wallpapers. Register each in `ASSETS.wallpapers` at the top of `app.js`, e.g. `sunset:'url(img/wallpapers/sunset.jpg)'` — it then shows up in everyone's Profile → Desktop. |
 | `img/icon-192.png`, `img/icon-512.png` | App icon (used when installed to a phone home screen / wrapped as an app). |
 
