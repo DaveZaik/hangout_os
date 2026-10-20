@@ -1332,9 +1332,10 @@ function openCropper(file, onDone) {
     imgW = img.width;
     imgH = img.height;
     const coverScale = Math.max(size / imgW, size / imgH);
+    const fitScale = Math.min(size / imgW, size / imgH);
     minScale = coverScale * 0.3;
     maxScale = coverScale * 5;
-    scale = coverScale;
+    scale = fitScale;
     zoomSlider.min = minScale;
     zoomSlider.max = maxScale;
     zoomSlider.value = scale;
@@ -1365,11 +1366,12 @@ function openCropper(file, onDone) {
 
   function handlePointerDown(e) {
     e.preventDefault();
-    const startX = e.clientX - offsetX;
-    const startY = e.clientY - offsetY;
+    const rect = canvas.getBoundingClientRect();
+    const startX = e.clientX - rect.left - offsetX;
+    const startY = e.clientY - rect.top - offsetY;
     function handleMove(ev) {
-      offsetX = ev.clientX - startX;
-      offsetY = ev.clientY - startY;
+      offsetX = ev.clientX - rect.left - startX;
+      offsetY = ev.clientY - rect.top - startY;
       constrain();
       draw();
     }
