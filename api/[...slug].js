@@ -65,6 +65,7 @@ const pub = (u) => ({
   ambient: u.ambient,
   volume: u.volume,
   clicks: u.clicks,
+  typingSounds: u.typingSounds,
 });
 const WP = ["peach", "dusk", "lilac", "moss", "ember", "night"],
   ACC = ["#e07a5f", "#6a8caf", "#8e7dbe", "#5f9e6e", "#d4a017", "#c95d8a"];
@@ -82,6 +83,7 @@ const mk = (U, name, pw, admin, avatar, extra = {}) => {
     ambient: 0,
     volume: 50,
     clicks: 0,
+    typingSounds: 1,
     ...extra,
   });
 };
@@ -206,6 +208,7 @@ module.exports = async (q, r) => {
       if (typeof b.volume === "number")
         s.volume = Math.max(0, Math.min(100, b.volume));
       if (typeof b.clicks === "number") s.clicks = b.clicks ? 1 : 0;
+      if (typeof b.typingSounds === "number") s.typingSounds = b.typingSounds ? 1 : 0;
       await U.updateOne({ _id: me.id }, { $set: s });
       return ok({});
     }

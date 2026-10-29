@@ -61,84 +61,50 @@ html,
 body {
   background: #b69a9f;
 }
-#pills {
-  position: absolute;
-  top: calc(14px + env(safe-area-inset-top, 0px));
-  left: 0;
-  right: 0;
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  padding: 0 10px;
-  overflow-x: auto;
-  z-index: 5;
-  scrollbar-width: none;
-}
-.pill {
-  font: 700 13px Silkscreen;
-  border: 2px solid #fff;
-  color: #fff;
-  background: #ffffff33;
-  padding: 6px 14px;
-  border-radius: 99px;
-  cursor: pointer;
-  text-shadow: 1px 1px 0 #0004;
-  white-space: nowrap;
-  transition: 0.2s;
-}
-.pill:hover {
-  background: #fffffff0;
-  color: var(--ac);
-  text-shadow: none;
-}
 #icons {
   position: absolute;
   inset: 0;
   z-index: 2;
 }
-.char {
+.chibi-container {
   position: absolute;
-  width: 64px;
-  height: 64px;
   z-index: 1;
-  pointer-events: auto;
+  pointer-events: none;
   image-rendering: pixelated;
-  transition:
-    left 2s ease-in-out,
-    top 2s ease-in-out;
-  cursor: pointer;
+  will-change: transform, left, top;
 }
-.char img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  pointer-events: none;
-}
-.char-idle {
-  animation: charBob 1s ease-in-out infinite;
-}
-.char-walk {
-  animation: charHop 0.2s ease-in-out infinite;
-}
-.char-wave {
-  animation: charWave 0.8s ease-in-out infinite;
-}
-.char-hop {
-  animation: charHop 0.3s ease-in-out;
-}
-.char-nap {
-  animation: charFloat 2s ease-in-out infinite;
-}
-.char .z {
+.chibi-shadow {
   position: absolute;
-  top: -20px;
-  right: 0;
-  font: 700 20px Silkscreen;
-  color: #fff;
-  text-shadow: 1px 1px 0 #000;
-  animation: zFloat 1.5s ease-in-out infinite;
-  opacity: 0;
+  z-index: 0;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 50%;
+  filter: blur(4px);
   pointer-events: none;
+}
+.chibi-bubble {
+  position: fixed;
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font: 12px Silkscreen;
+  color: var(--ink);
+  white-space: normal;
+  z-index: 5;
+  pointer-events: none;
+  box-shadow: 3px 3px 0 #0006;
+  max-width: 180px;
+  text-align: center;
+}
+.chibi-bubble::after {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 8px solid #fff;
 }
 @keyframes charBob {
   0%,
@@ -680,6 +646,12 @@ select {
   gap: 12px;
   margin-top: 12px;
 }
+.hint {
+  font: 14px Silkscreen;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+  margin-bottom: 8px;
+}
 .note {
   padding: 10px;
   position: relative;
@@ -695,6 +667,11 @@ select {
   top: 2px;
   right: 6px;
   cursor: pointer;
+}
+.note .btn.voted {
+  background: #a8d4ff;
+  color: #241a18;
+  text-shadow: none;
 }
 .sw {
   width: 46px;
@@ -915,6 +892,8 @@ body.local #bar .demo {
   transform: rotateY(var(--a)) translateZ(var(--r));
   text-align: center;
   transition: opacity 0.5s;
+  transform-style: preserve-3d;
+  backface-visibility: visible;
 }
 .bub-wrap {
   width: 104px;
@@ -922,13 +901,20 @@ body.local #bar .demo {
   margin: 0 auto 8px;
   animation: bubSpin 8s linear infinite;
   transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.bub-wrap.paused {
+  animation-play-state: paused;
+  transform: rotateY(0deg);
 }
 .bub {
   width: 100%;
   height: 100%;
   border-radius: 50%;
   border: 4px solid #fff;
-  box-shadow: 0 7px 0 #0004;
+  box-shadow:
+    0 7px 0 #0004,
+    inset 0 0 10px rgba(0,0,0,0.1);
   background: #fff;
   overflow: hidden;
   display: flex;
@@ -938,7 +924,10 @@ body.local #bar .demo {
   color: var(--ink);
   transition: box-shadow 0.4s;
   backface-visibility: visible;
+  transform-style: preserve-3d;
+  transform: rotateY(0deg);
   animation: bubBob 2s ease-in-out infinite;
+  position: relative;
 }
 @keyframes bubSpin {
   from {
@@ -966,6 +955,9 @@ body.local #bar .demo {
   font: 700 15px Silkscreen;
   color: #fff;
   text-shadow: 2px 2px 0 #0006;
+  transform-style: preserve-3d;
+  backface-visibility: visible;
+  transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .rb.on .bub {
   box-shadow:
@@ -1033,18 +1025,6 @@ body.local #bar .demo {
   display: block;
   opacity: 0.65;
   font-size: 15px;
-}
-.char {
-  width: 76px;
-  height: 86px;
-  image-rendering: pixelated;
-}
-.char svg {
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  image-rendering: pixelated;
-  filter: drop-shadow(2px 3px 0 #0004);
 }
 .nb-character {
   left: calc(50% + 96px);

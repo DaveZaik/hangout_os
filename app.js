@@ -76,6 +76,8 @@ function mdb() {
         ...u,
         id: "u" + i,
         pw: u.name.toLowerCase(),
+        clicks: 0,
+        typingSounds: 1,
       })),
       hangouts: SEED.hangouts.map((h, i) => ({ ...h, _id: "h" + i })),
       notes: SEED.notes.map((n, i) => ({
@@ -110,6 +112,7 @@ async function mock(m, p, b = {}) {
       ambient: u.ambient,
       volume: u.volume,
       clicks: u.clicks,
+      typingSounds: u.typingSounds,
     }),
     me =
       (tok || "").startsWith("local:") &&
@@ -143,6 +146,7 @@ async function mock(m, p, b = {}) {
     if (typeof b.volume === "number")
       me.volume = Math.max(0, Math.min(100, b.volume));
     if (typeof b.clicks === "number") me.clicks = b.clicks;
+    if (typeof b.typingSounds === "number") me.typingSounds = b.typingSounds;
     if (b.password) me.pw = b.password;
     return ok({});
   }
@@ -429,6 +433,7 @@ const WP = {
 };
 Object.assign(WP, ASSETS.wallpapers);
 async function up(f, max = 1280, uploadType = "avatar") {
+  SFX.play("uploadStart");
   try {
     const r = await fetch("/api/upload-url", {
       method: "POST",
@@ -450,37 +455,43 @@ async function up(f, max = 1280, uploadType = "avatar") {
       body: f,
     });
     if (!u.ok) throw new Error("Upload to R2 failed");
+    sfx.uploadDone();
     return {
       url: publicUrl,
       video: f.type.startsWith("video") ? 1 : 0,
       caption: f.name.replace(/\.\w+$/, ""),
     };
   } catch (e) {
-    if (f.type.startsWith("image"))
-      return {
+    if (f.type.startsWith("image")) {
+      const result = {
         url: await shrink(f, max),
         video: 0,
         caption: f.name.replace(/\.\w+$/, ""),
       };
+      SFX.play("uploadDone");
+      return result;
+    }
     if (f.size > 1.5e6)
       throw new Error(
         "File too big for demo mode — set up R2 environment variables.",
       );
     return new Promise((res, rej) => {
       const r = new FileReader();
-      r.onload = () =>
+      r.onload = () => {
+        SFX.play("uploadDone");
         res({
           url: r.result,
           video: f.type.startsWith("video") ? 1 : 0,
           caption: f.name.replace(/\.\w+$/, ""),
         });
+      };
       r.onerror = rej;
       r.readAsDataURL(f);
     });
   }
 }
 const logout = () => {
-  stopCharAnim();
+  window.stopChibi();
   localStorage.removeItem("tok");
   location.reload();
 };
@@ -660,6 +671,20 @@ const NEIGHBOR = [
   "kkaaaawwkaaakkk",
   "kkkkkkkkkkkkkk",
 ];
+const CROWN = [
+  "kkykykykykykyk",
+  "yyyayyyyyyyyyy",
+  "yyyaayyyyyyyyy",
+  "yyyaayyayyyayy",
+  "yyyaayyyaayyay",
+  "yyyyyaayyyaayy",
+  "yyyaayyyaayyay",
+  "yyyaayyyaayyay",
+  "yyyaayyayyyayy",
+  "yyyyayyyyyyyyy",
+  "yyyyayyyyyyyyy",
+  "kkykykykykykyk",
+];
 const K = "#241a18",
   SYS = {
     pics: {
@@ -694,11 +719,12 @@ const K = "#241a18",
       img: art(NEIGHBOR, { k: K, a: "#6a8caf", w: "#fff" }),
       open: () => neighbors(),
     },
-    get me() {
+    get admin() {
+      if (!D.me.admin) return null;
       return {
-        l: "Profile",
-        img: `<div class="tl" style="background:#fff">${av(D.me.avatar, D.me.name)}</div>`,
-        open: () => profile(),
+        l: "Admin",
+        img: art(CROWN, { k: K, a: "#ffd700", b: "#ffeb3b" }),
+        open: () => admin(),
       };
     },
   };
@@ -720,7 +746,7 @@ function grid() {
   const W = innerWidth,
     Hh = innerHeight,
     m = W < 700,
-    top = m ? 72 : 80,
+    top = m ? 16 : 20,
     bot = 66,
     cs = m ? 106 : 132,
     cols = Math.max(2, (W / cs) | 0),
@@ -752,7 +778,7 @@ function put(id) {
 }
 function sync() {
   const want = [
-    ...Object.keys(SYS).map((k) => "s:" + k),
+    ...Object.keys(SYS).filter(k => k !== "admin" || D.me.admin).map((k) => "s:" + k),
     ...D.hangouts.map((h) => "h:" + h._id),
   ];
   L.forEach((p) => (p.n = p.n.filter((n) => want.includes(n.id))));
@@ -771,9 +797,18 @@ function draw() {
     e.className = "ic";
     e.style.cssText = `left:${n.x}px;top:${n.y}px;transform:rotate(${n.r}deg);animation-delay:${i * 45}ms`;
     e.innerHTML = `<div class="im">${f.img}</div><span>${esc(f.l)}</span>`;
+    e.onpointerenter = () => {
+      if (window.matchMedia("(pointer:fine)").matches) SFX.play("hover");
+    };
     e.onclick = () => {
       resumeAudio();
-      sfx.click();
+      if (n.id === "s:pics" || n.id === "s:vids") {
+        SFX.play("openFolder");
+      } else if (n.id === "s:board" || n.id === "s:chat" || n.id === "s:neighbors" || n.id === "s:admin") {
+        SFX.play("openApp");
+      } else {
+        SFX.play("openFile");
+      }
       f.open();
     };
     box.appendChild(e);
@@ -783,7 +818,7 @@ function draw() {
 const go = (d) => {
   page = (page + d + L.length) % L.length;
   draw();
-  sfx.page();
+  SFX.play("pageSwitch");
 };
 const pageOf = (id) => {
   const i = L.findIndex((p) => p.n.some((n) => n.id === "h:" + id));
@@ -847,11 +882,13 @@ function win(id, title, fn, keep) {
       w.querySelector(".max-btn").style.display = "none";
     } else {
       w.style.left = Math.max(8, innerWidth / 2 - 280 + o - 40) + "px";
-      w.style.top = 90 + o + "px";
+      w.style.top = 40 + o + "px";
       w._max = false;
     }
     w.querySelector("i").onclick = () => shut(id);
-    w.onpointerdown = () => (w.style.zIndex = ++z);
+    w.onpointerdown = () => {
+      w.style.zIndex = ++z;
+    };
     const minBtn = w.querySelector(".min-btn");
     minBtn.innerHTML = MIN_BTN;
     minBtn.onclick = (e) => {
@@ -891,13 +928,17 @@ function win(id, title, fn, keep) {
   w._k = keep;
   w.style.zIndex = ++z;
   fn(w.querySelector(".bd"));
-  sfx.open();
+  if (id === "board" || id === "chat" || id === "neighbors" || id === "admin") {
+    SFX.play("openApp");
+  } else {
+    SFX.play("openFolder");
+  }
 }
 const shut = (id) => {
   const w = W[id];
   if (w) {
     w.style.animation = "winClose .2s forwards";
-    sfx.close();
+    SFX.play("close");
     setTimeout(() => {
       w.remove();
       delete W[id];
@@ -919,6 +960,7 @@ const minimize = (id) => {
     e.stopPropagation();
     restore(id);
   };
+  SFX.play("minimise");
 };
 const restore = (id) => {
   const w = W[id];
@@ -942,7 +984,16 @@ const restore = (id) => {
     w.style.animation = "winZoomOut .2s forwards";
     w._max = false;
     w.querySelector(".max-btn").innerHTML = MAX_BTN;
-    sfx.restore();
+    SFX.play("restore");
+  } else {
+    w.style.left = w._preL;
+    w.style.top = w._preT;
+    w.style.width = w._preW;
+    w.style.height = w._preH;
+    w.style.animation = "winZoomIn .2s forwards";
+    w._max = true;
+    w.querySelector(".max-btn").innerHTML = MIN_BTN;
+    SFX.play("maximise");
   }
 };
 const toggleMax = (id) => {
@@ -955,7 +1006,7 @@ const toggleMax = (id) => {
     w._preT = w.style.top;
     w._preW = w.style.width;
     w._preH = w.style.height;
-    const top = $("#pills").offsetHeight + 8,
+    const top = 16,
       bottom = $("#bar").offsetHeight;
     w.style.left = "8px";
     w.style.top = top + "px";
@@ -964,10 +1015,25 @@ const toggleMax = (id) => {
     w.style.animation = "winZoomIn .2s forwards";
     w._max = true;
     w.querySelector(".max-btn").innerHTML = REST_BTN;
-    sfx.max();
+    SFX.play("maximise");
   }
 };
 document.addEventListener("keydown", (e) => {
+  if (
+    e.target.tagName === "INPUT" ||
+    e.target.tagName === "TEXTAREA"
+  ) {
+    if (
+      e.key.length === 1 &&
+      !e.shiftKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !e.metaKey &&
+      e.key !== "Tab"
+    ) {
+      SFX.play("typing");
+    }
+  }
   if (e.key === "Escape") {
     const topId = Object.keys(W).reduce(
       (a, k) => (!a || W[k].style.zIndex > W[a].style.zIndex ? k : a),
@@ -996,7 +1062,7 @@ const act = async (f) => {
     await f();
     await reload();
   } catch (e) {
-    sfx.error();
+    SFX.play("error");
     alert(e.message);
   }
 };
@@ -1009,11 +1075,13 @@ const tile = (h, i, cap) => {
 const wire = (bd) =>
   bd.querySelectorAll(".tile").forEach(
     (t) =>
-      (t.onclick = () =>
+      (t.onclick = () => {
+        SFX.play("openFile");
         view(
           D.hangouts.find((x) => x._id === t.dataset.h),
           +t.dataset.i,
-        )),
+        );
+      }),
   );
 function view(h, i) {
   const m = h.media[i],
@@ -1070,7 +1138,7 @@ function hangout(id) {
         if (t)
           act(async () => {
             await api("POST", "comments", { hangout: id, text: t });
-            sfx.comment();
+            SFX.play("comment");
           });
       };
       bd.querySelector("#cp").onclick = post;
@@ -1111,12 +1179,13 @@ function folder(v) {
 function board() {
   win("board", "Ideas", (bd) => {
     const by = (id) => (D.users.find((u) => u.id === id) || {}).name || "";
-    bd.innerHTML = `<div class="row"><select id="bk" style="width:auto;margin:0"><option value="place">📍 Place</option><option value="act">🎯 Activity</option></select><input id="bn" placeholder="Pitch a place or hangout idea…"><button class="btn p" id="ba">Pin</button></div>
+    const voted = (n) => n.votes.includes(D.me.id);
+    bd.innerHTML = `<div class="hint">Tap ▲ to vote for what we do next.</div><div class="row"><select id="bk" style="width:auto;margin:0"><option value="place">📍 Place</option><option value="act">🎯 Activity</option></select><input id="bn" placeholder="Pitch a place or hangout idea…"><button class="btn p" id="ba">Pin</button></div>
  <div class="notes">${[...D.notes]
    .sort((a, b) => b.votes.length - a.votes.length)
    .map(
      (n, i) =>
-       `<div class="note" style="background:${NC[i % 4]};--r:${((i % 3) - 1) * 1.5}deg"><small>${esc(n.kind)} ${by(n.by) ? "· " + esc(by(n.by)) : ""}</small><div>${esc(n.text)}</div><button class="btn" data-v="${n._id}">▲ ${n.votes.length}${n.votes.includes(D.me.id) ? " ✓" : ""}</button>${D.me.admin ? `<b data-d="${n._id}">✕</b>` : ""}</div>`,
+       `<div class="note" style="background:${NC[i % 4]};--r:${((i % 3) - 1) * 1.5}deg"><small>${esc(n.kind)} ${by(n.by) ? "· " + esc(by(n.by)) : ""}</small><div>${esc(n.text)}</div><button class="btn ${voted(n) ? "voted" : ""}" data-v="${n._id}">▲ ${n.votes.length} vote${n.votes.length === 1 ? "" : "s"}${voted(n) ? " (voted)" : ""}</button>${D.me.admin ? `<b data-d="${n._id}">✕</b>` : ""}</div>`,
    )
    .join("")}</div>`;
     const add = () => {
@@ -1138,7 +1207,7 @@ function board() {
         (b.onclick = () =>
           act(async () => {
             await api("POST", "notes/" + b.dataset.v + "/vote");
-            sfx.vote();
+            SFX.play("vote");
           })),
     );
     bd.querySelectorAll("[data-d]").forEach(
@@ -1193,76 +1262,11 @@ function neighborDetail(uid) {
     );
   }
 }
-/* ---- audio system ---- */
+/* ---- ambient music ---- */
 let audioCtx,
   ambientOsc,
-  ambientGain,
-  soundsEnabled = true;
+  ambientGain;
 const vol = () => (D.me?.volume || 50) / 100;
-const beep = (freq = 440, type = "square", dur = 0.05, g = 0.15) => {
-  if (!soundsEnabled || !audioCtx) return;
-  const o = audioCtx.createOscillator(),
-    gn = audioCtx.createGain();
-  o.type = type;
-  o.frequency.setValueAtTime(freq, audioCtx.currentTime);
-  gn.gain.setValueAtTime(g * vol(), audioCtx.currentTime);
-  gn.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
-  o.connect(gn);
-  gn.connect(audioCtx.destination);
-  o.start();
-  o.stop(audioCtx.currentTime + dur);
-};
-const sfx = {
-  open: () => beep(523, "triangle", 0.08, 0.2),
-  close: () => beep(392, "triangle", 0.1, 0.18),
-  max: () => beep(659, "square", 0.06, 0.12),
-  restore: () => beep(587, "square", 0.06, 0.12),
-  click: () => beep(880, "square", 0.03, 0.08),
-  page: () => beep(440, "sine", 0.05, 0.1),
-  msgSent: () => beep(784, "triangle", 0.07, 0.15),
-  msgRecv: () => beep(698, "sine", 0.08, 0.12),
-  vote: () => beep(523, "square", 0.05, 0.1),
-  comment: () => beep(587, "triangle", 0.06, 0.12),
-  upload: () => beep(659, "square", 0.1, 0.15),
-  error: () => {
-    if (!soundsEnabled || !audioCtx) return;
-    const o = audioCtx.createOscillator(),
-      gn = audioCtx.createGain();
-    o.type = "sawtooth";
-    o.frequency.setValueAtTime(220, audioCtx.currentTime);
-    o.frequency.linearRampToValueAtTime(110, audioCtx.currentTime + 0.15);
-    gn.gain.setValueAtTime(0.2 * vol(), audioCtx.currentTime);
-    gn.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
-    o.connect(gn);
-    gn.connect(audioCtx.destination);
-    o.start();
-    o.stop(audioCtx.currentTime + 0.2);
-  },
-};
-const userJingle = (uid) => {
-  if (!audioCtx) return;
-  const h = [...uid].reduce((a, c) => a + c.charCodeAt(0), 0);
-  const types = ["square", "triangle", "sine"];
-  const type = types[h % 3];
-  const base = 220 + (h % 4) * 110;
-  const notes = [base, base * 1.25, base * 1.5, base * 2, base * 1.25];
-  const count = 4 + (h % 2);
-  const dur = 0.1;
-  let t = audioCtx.currentTime;
-  for (let i = 0; i < count; i++) {
-    const o = audioCtx.createOscillator(),
-      gn = audioCtx.createGain();
-    o.type = type;
-    o.frequency.setValueAtTime(notes[h % notes.length], t);
-    gn.gain.setValueAtTime(0.2 * vol(), t);
-    gn.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    o.connect(gn);
-    gn.connect(audioCtx.destination);
-    o.start(t);
-    o.stop(t + dur);
-    t += dur + 0.05;
-  }
-};
 function startAmbient() {
   if (!D.me?.ambient || ambientOsc) return;
   if (!audioCtx)
@@ -1516,24 +1520,29 @@ const PROFILE = [
     t: "Sounds",
     html: (
       m,
-    ) => `<h5>Sound effects</h5><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="se" ${soundsEnabled ? "checked" : ""}> Enable sound effects</label>
+    ) => `<h5>Sound effects</h5><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="se" ${m.clicks ? "checked" : ""}> Enable sound effects</label>
   <div style="margin-top:8px"><label>Volume: <input type="range" id="vl" min="0" max="100" value="${m.volume || 50}"></label></div>
-  <h5 style="margin-top:15px">Ambient music</h5><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="am" ${m.ambient ? "checked" : ""}> Enable ambient music</label>
-  <h5 style="margin-top:15px">Click sounds</h5><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="cs" ${m.clicks ? "checked" : ""}> Enable click sounds</label>`,
+  <h5 style="margin-top:15px">Typing sounds</h5><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="ts" ${m.typingSounds ? "checked" : ""}> Enable typing sounds</label>
+  <h5 style="margin-top:15px">Ambient music</h5><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="am" ${m.ambient ? "checked" : ""}> Enable ambient music</label>`,
     bind: (bd, pref) => {
       bd.querySelector("#se").onchange = (e) => {
-        soundsEnabled = e.target.checked;
         pref({ clicks: e.target.checked ? 1 : 0 });
+        SFX.configure({ enabled: e.target.checked });
       };
-      bd.querySelector("#vl").oninput = (e) =>
-        pref({ volume: +e.target.value });
+      bd.querySelector("#vl").oninput = (e) => {
+        const vol = Math.max(0, Math.min(100, +e.target.value));
+        pref({ volume: vol });
+        SFX.configure({ volume: vol });
+      };
+      bd.querySelector("#ts").onchange = (e) => {
+        pref({ typingSounds: e.target.checked ? 1 : 0 });
+        SFX.configure({ typing: e.target.checked });
+      };
       bd.querySelector("#am").onchange = (e) => {
         pref({ ambient: e.target.checked ? 1 : 0 });
         if (e.target.checked) startAmbient();
         else stopAmbient();
       };
-      bd.querySelector("#cs").onchange = (e) =>
-        pref({ clicks: e.target.checked ? 1 : 0 });
     },
   },
 ];
@@ -1595,7 +1604,7 @@ function chat() {
         if (end) cl.scrollTop = cl.scrollHeight;
         if (!firstPaint)
           for (const m of ms)
-            if (!seen.has(m._id) && m.from !== D.me.id) sfx.msgRecv();
+            if (!seen.has(m._id) && m.from !== D.me.id) SFX.play("receive");
         firstPaint = false;
         ms.forEach((m) => seen.add(m._id));
       };
@@ -1610,7 +1619,7 @@ function chat() {
         try {
           await api("POST", "messages/" + th, { text });
           if (input.value.trim() === text) input.value = "";
-          sfx.msgSent();
+          SFX.play("send");
           await paint();
         } catch (e) {
           error.textContent = e.message;
@@ -1748,102 +1757,26 @@ function bar() {
   $("#me").innerHTML = av(D.me.avatar, D.me.name);
   $("#mn").textContent = D.me.name;
 }
-let charTimer,
-  charEl,
-  reducedMotion = window.matchMedia("(prefers-reduced-motion:reduce)").matches;
-function initChar() {
-  charEl = document.createElement("div");
-  charEl.className = "char";
-  charEl.setAttribute("aria-label", D.me.name + " chibi companion");
-  charEl.innerHTML = chibi(D.me);
-  charEl.style.left = "20%";
-  charEl.style.top = "60%";
-  charEl.onclick = () => {
-    if (!reducedMotion) {
-      charEl.style.animation = "charJump .3s ease-out";
-      setTimeout(() => (charEl.style.animation = ""), 300);
-    }
-  };
-  $("#desk").appendChild(charEl);
-  startCharAnim();
-}
-function startCharAnim() {
-  if (reducedMotion || !charEl) return;
-  const anims = ["idle", "walk", "wave", "hop", "nap"];
-  const doAnim = () => {
-    if (document.hidden || !charEl) return;
-    const anim = anims[(Math.random() * anims.length) | 0];
-    charEl.className = "char char-" + anim;
-    if (anim === "walk") {
-      const x = 10 + Math.random() * 80,
-        y = 40 + Math.random() * 40;
-      charEl.style.transform =
-        x < parseFloat(charEl.style.left) ? "scaleX(-1)" : "scaleX(1)";
-      charEl.style.left = x + "%";
-      charEl.style.top = y + "%";
-    }
-    if (anim === "nap") {
-      charEl.innerHTML +=
-        '<span class="z">z</span><span class="z" style="animation-delay:.2s">z</span><span class="z" style="animation-delay:.4s">z</span>';
-    } else {
-      charEl.querySelectorAll(".z").forEach((z) => z.remove());
-    }
-    charTimer = setTimeout(doAnim, 4000 + Math.random() * 4000);
-  };
-  doAnim();
-}
-function stopCharAnim() {
-  clearTimeout(charTimer);
-  if (charEl) charEl.querySelectorAll(".z").forEach((z) => z.remove());
-}
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) stopCharAnim();
-  else if (charEl) startCharAnim();
-});
 function start() {
   $("#login").hidden = true;
   $("#desk").hidden = false;
   theme();
-  const P = [
-    [
-      "home",
-      () => {
-        Object.keys(W).forEach(shut);
-        page = 0;
-        draw();
-      },
-    ],
-    ["pictures", () => folder(0)],
-    ["videos", () => folder(1)],
-    ["ideas", board],
-    ["chat", chat],
-    ["neighbors", neighbors],
-    ["profile", profile],
-  ];
-  if (D.me.admin) P.push(["admin", admin]);
-  const pillIcons = {
-    home: "⌂",
-    pictures: SYS.pics.img,
-    videos: SYS.vids.img,
-    ideas: SYS.board.img,
-    chat: SYS.chat.img,
-    neighbors: SYS.neighbors.img,
-    profile: SYS.me.img,
-    admin: "⚙",
-  };
-  $("#pills").innerHTML = "";
-  P.forEach(([n, f]) => {
-    const b = document.createElement("button");
-    b.className = "pill";
-    b.innerHTML = `<span class="pill-ico" aria-hidden="true">${pillIcons[n]}</span><span>${esc(n)}</span>`;
-    b.setAttribute("aria-label", n);
-    b.onclick = () => {
-      resumeAudio();
-      f();
-    };
-    $("#pills").appendChild(b);
+  SFX.configure({
+    enabled: D.me.clicks ? true : false,
+    volume: D.me.volume || 50,
+    typing: D.me.typingSounds ? true : false,
   });
+  SFX.jingle(D.me.id);
+  if (D.me.admin) {
+    put("s:admin");
+  }
   $("#me").onclick = profile;
+  $("#sd").onclick = () => {
+    SFX.play("close");
+    Object.keys(W).forEach(shut);
+    page = 0;
+    draw();
+  };
   $("#pv").onclick = () => go(-1);
   $("#nx").onclick = () => go(1);
   $("#lo").onclick = logout;
@@ -1851,7 +1784,7 @@ function start() {
   L = [];
   sync();
   draw();
-  initChar();
+  window.initChibi(D.me);
   let tx;
   $("#desk").ontouchstart = (e) =>
     (tx = e.target.closest(".win,.pill") ? null : e.touches[0].clientX);
@@ -1924,6 +1857,13 @@ function ring(us) {
     sel = null;
     pwf.hidden = true;
     clearTimeout(pauseTimer);
+    [...box.children].forEach((e) => {
+      const wrap = e.querySelector(".bub-wrap");
+      const rn = e.querySelector(".rn");
+      wrap.classList.remove("paused");
+      wrap.style.transform = "";
+      rn.style.transform = "";
+    });
     setTimeout(() => (idle = true), 2500);
   };
   const pick = (i) => {
@@ -1936,6 +1876,19 @@ function ring(us) {
     resumeAudio();
     idle = false;
     clearTimeout(pauseTimer);
+    [...box.children].forEach((e, idx) => {
+      const wrap = e.querySelector(".bub-wrap");
+      const rn = e.querySelector(".rn");
+      if (idx === i) {
+        wrap.classList.add("paused");
+        wrap.style.transform = "rotateY(0deg)";
+        rn.style.transform = "rotateY(0deg)";
+      } else {
+        wrap.classList.remove("paused");
+        wrap.style.transform = "";
+        rn.style.transform = "";
+      }
+    });
   };
   wrap.onpointerdown = (e) => {
     idle = false;
